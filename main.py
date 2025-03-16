@@ -1,35 +1,29 @@
-import os
-import requests
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+import ollama
 
-def generate_code_from_hf(prompt: str, max_length: int = 200) -> str:
-    """
-    Generate code using the Hugging Face Inference API.
+# Initialize FastAPI app
+app = FastAPI()
 
-    Parameters:
-      prompt (str): The code prompt or instruction.
-      max_length (int): Maximum number of tokens to generate.
+# Define request model
+class CodeRequest(BaseModel):
+    prompt: str
 
-    Returns:
-      str: The generated code or an error message.
-    """
-    API_URL = "https://api-inference.huggingface.co/models/deepseek-ai/deepseek-coder-6.7b"
-    hf_token = os.environ.get("HF_TOKEN")
-    if not hf_token:
-        return "Error: HF_TOKEN environment variable not set."
+# Root endpoint (optional, but prevents 404 error on "/")
+@app.get("/")
+async def root():
+    return {"message": "Code Copilot API is running. Use /generate to send requests."}
 
-    headers = {"Authorization": f"Bearer {hf_token}"}
-    payload = {
-        "inputs": prompt,
-        "parameters": {"max_new_tokens": max_length}
-    }
-    response = requests.post(API_URL, headers=headers, json=payload)
-    if response.status_code != 200:
-        return f"Error: {response.status_code}, {response.text}"
+# API endpoint for code generation
+@app.post("/generate")
+async def generate_code(request: CodeRequest):
     try:
-        output = response.json()
-        # Expected output is a list of dicts containing "generated_text"
-        if isinstance(output, list) and output and "generated_text" in output[0]:
-            return output[0]["generated_text"]
-        return str(output)
+        response = ollama.chat(model="deepseek-coder:6.7b", messages=[{"role": "user", "content": request.prompt}])
+        return {"response": response["message"]["content"]}
     except Exception as e:
-        return f"Error parsing response: {e}"
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Run FastAPI when executed directly
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
